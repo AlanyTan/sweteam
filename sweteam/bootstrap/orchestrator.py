@@ -317,22 +317,22 @@ class Orchestrator(BaseAgent):
                 if issue_updated.is_true:
                     self.logger.info("Issue %s was updated by %s", issue_number, agt.name)
                 else:
-                    update_issue_prompt = (f"The assistant {agt.name} provided the following response. "
-                                        f"use issue_manager(action='update'...) to update the issue {issue_number} "
-                                        'and if needed, its sub-issues, according to the response provided by the assistant. '
-                    )
+                    update_issue_prompt = (f"Please use issue_manager(action='update'...) to update issue "
+                                           f"#{issue_number} according to assistant {agt.name} provided response:"
+                                           f"{agt_reply}"
+                                           )
                     update_issue_reply = self.perform_task(update_issue_prompt, self.name, 
                             context=[{'role': "user", 'content': str(self.issue_manager(action='read', issue=open_issue.get('issue')))},
                                         {'role': "user", 'content': to_agt_prompt}, 
                                         {'role': "assistant", 'content': agt_reply}])
                     issue_updated = self.is_true(
-                        "Was the issue(s) updated successfully?", update_issue_prompt, json.dump(update_issue_reply["message"]))
-                    if code_saved.is_true:
+                        "Was the issue(s) updated successfully?", update_issue_prompt, json.dumps(update_issue_reply["content"]))
+                    if issue_updated.is_true:
                         self.logger.info(
-                            "Issue %s saved successfully.", issue_number)
+                            "Issue %s updated successfully.", issue_number)
                     else:
                         self.logger.warning(
-                            "Issue %s failed to save. Details: %s", issue_number, issue_updated.exaplanation)
+                            "Failed to update Issue %s failed. Details: %s", issue_number, issue_updated.exaplanation)
 
                 ## check if the response include code snipets, if so save them to files
                 has_code_to_update = self.is_true(

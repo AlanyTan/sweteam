@@ -76,20 +76,19 @@ def get_default_logger(name: str = '', stream: str | bool | None = None, file: s
 
 logger = get_default_logger((__package__ or __name__ or ""))
 logger.debug(
-    "utils default logger initialized with the following handlers %s.", logger.handlers)
+    "default logger initialized with the following handlers %s.", logger.handlers)
 
 
 @contextmanager
 def logging_context(*args, **kwargs) -> Generator[logging.Logger, None, None]:
-    """use contextmanager to setup/shutdown logging"""
-    logger_ = None
+    """use contextmanager to setup/shutdown logging
+    Should only use in the main fun of a project, not in sub modules"""
     try:
-        logger_ = get_logger(*args, **kwargs)
-        yield logger_
+        yield logger
     finally:
         try:
-            if isinstance(logger_, logging.Logger):
-                logger_.info("shutting down the logging facility...")
+            if isinstance(logger, logging.Logger):
+                logger.info("shutting down the logging facility...")
         except Exception as e:
             print(f"Can't log final message to logger, {e=}"
                   "shutting down the logging facility...")

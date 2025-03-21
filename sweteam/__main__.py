@@ -14,7 +14,7 @@ import importlib
 
 
 if __name__ == "__main__":
-    alt_args = ["doctest" "testmod()"]
+    alt_args = ["doctest", "testmod"]
     args = sys.argv[1:] or alt_args
     if args:
         module_name = args[0]

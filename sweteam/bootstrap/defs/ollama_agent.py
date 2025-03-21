@@ -109,7 +109,7 @@ class Ollama_Agent(BaseAgent):
 
     class MessageHistory(BaseModel):
         role: str
-        content: str
+        content: str|dict
 
     def messages_append(self, new_message: MessageHistory, msg_hist_object: list[MessageHistory] = []) -> None:
         def msg_len(msg) -> int:
@@ -119,12 +119,18 @@ class Ollama_Agent(BaseAgent):
                 # self.logger.warning("Error calculating message length: %s", e)
                 return len(repr(msg))
 
+        byte_to_token_ratio = 6  # roughly 4 bytes per token with 50% overhead so set it to 6 to be safe
+
+        if 'tool_calls' in new_message and new_message['tool_calls']:
+            for idx, tool_call in enumerate(new_message['tool_calls']):
+                new_message[idx] = tool_call.dict()
+
         if msg_hist_object is self.messages:
             msg_hist_object = []
 
         for hist_obj in [self.messages, msg_hist_object]:
             hist_obj.append(new_message)
-            while msg_len(hist_obj) > self.config.context_window_size * 1024 * 0.75:
+            while msg_len(hist_obj) > self.config.context_window_size / byte_to_token_ratio * 1024:
                 del hist_obj[0]
 
     def perform_task(self, task: str = '', from_: str = "Unknown", context: list[MessageHistory] | str = '') -> TaskResult:
@@ -219,6 +225,9 @@ class Ollama_Agent(BaseAgent):
         final_message = dict(response['message'])
         final_message['content'] = re.sub(r'<(think|thinking)>.*?</\1>', '', final_message['content'], flags=re.DOTALL)
         final_message['tool_used'] = tool_used
+        if 'tool_calls' in final_message and final_message['tool_calls']:
+            for idx, tool_call in enumerate(final_message['tool_calls']):
+                final_message['tool_calls'][idx] = tool_call.dict()
         self.logger.debug("final response: %s", final_message)
 
         return final_message
