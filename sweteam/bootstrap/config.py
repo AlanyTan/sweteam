@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     def validate_alphanumeric_and_underscore(cls, v, field):
         if not all(char.isalnum() or char in '_-' for char in v):
             raise ValueError(
-                f'{field.name} must contain only alphanumeric characters and underscores')
+                f'{field.field_name} must contain only alphanumeric characters and underscores')
         return v
 
     @field_validator('RETRY_COUNT')
