@@ -149,15 +149,11 @@ class IssueManagementApp:
         self.app.get("/api/issues")(self.list_issues)
         self.app.get("/api/status")(self.status_endpoint)
 
-    async def status_endpoint(self, request: Request):
-        if self.initialized.is_set():
-            async def ready_generator():
-                while True:
-                    yield {"event": "message", "data": '{"status": "ready", "message": "Already initialized"}'}
-            return EventSourceResponse(ready_generator())
-            
+    async def status_endpoint(self, request: Request):            
         async def event_generator():
-            if self.async_redis_client is None:
+            if self.initialized.is_set():
+                yield {"event": "message", "data": '{"status": "ready", "message": "Already initialized"}'}
+            elif self.async_redis_client is None:
                 pubsub = self.redis_client.pubsub()
                 pubsub.subscribe(f"{self.issue_manager.namespace}{self.issue_manager.name}/status_channel")
                 try:
