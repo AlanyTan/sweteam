@@ -4,9 +4,10 @@ from typing import Optional, Union, Self, AsyncGenerator
 from contextlib import contextmanager, asynccontextmanager
 import threading
 
+
 class RedisConnectionPool:
     """A singleton Redis connection pool manager with context management support.
-    
+
     This class manages Redis connection pools and provides both synchronous and 
     asynchronous client connections. It ensures connection pools are properly
     cleaned up when no active clients remain.
@@ -16,8 +17,6 @@ class RedisConnectionPool:
         >>> with RedisConnectionPool() as pool:
         ...     with pool.get_client(host='localhost') as client:
         ...         client.set('key', 'value')
-        ...     async with pool.get_async_client(host='localhost') as client:
-        ...         await client.set('key', 'value')
     """
     _instance = None
     _lock = threading.Lock()
@@ -49,13 +48,13 @@ class RedisConnectionPool:
             redis.Redis: A Redis client instance that can be used as a context manager
         """
         pool_key = cls._create_pool_key(**kwargs)
-        
+
         if pool_key not in cls._pools:
             cls._pools[pool_key] = redis.ConnectionPool(**kwargs)
-        
+
         client = redis.Redis(connection_pool=cls._pools[pool_key])
         cls._active_clients += 1
-        
+
         return client
 
     @classmethod
@@ -69,13 +68,13 @@ class RedisConnectionPool:
             redis.asyncio.Redis: An async Redis client instance that can be used as a context manager
         """
         pool_key = cls._create_pool_key(**kwargs)
-        
+
         if pool_key not in cls._async_pools:
             cls._async_pools[pool_key] = redis.asyncio.ConnectionPool(**kwargs)
-        
+
         client = redis.asyncio.Redis(connection_pool=cls._async_pools[pool_key])
         cls._active_async_clients += 1
-        
+
         return client
 
     def __enter__(self) -> Self:
@@ -93,7 +92,7 @@ class RedisConnectionPool:
             pool.disconnect()
         self._pools.clear()
         self._active_clients = 0
-        
+
         # Cleanup async pools
         for pool in self._async_pools.values():
             try:
@@ -119,19 +118,19 @@ class RedisConnectionPool:
             pool.disconnect()
         self._pools.clear()
         self._active_clients = 0
-        
+
         # Cleanup async pools
         for pool in self._async_pools.values():
             await pool.disconnect()
         self._async_pools.clear()
-        
+
     @classmethod
     def shutdown(cls):
         """Force shutdown all connection pools."""
         for pool in cls._pools.values():
             pool.disconnect()
         cls._pools.clear()
-        
+
         for pool in cls._async_pools.values():
             try:
                 import asyncio

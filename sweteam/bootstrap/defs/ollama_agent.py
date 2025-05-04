@@ -56,7 +56,7 @@ class Ollama_Agent(BaseAgent):
         self.logger.debug("loaded agent %s config from parameter agent_config: %s as %s",
                           self.name, agent_config, self.config)
 
-        self.llm_client: ollama.Client = ollama.Client(host=config.OLLAMA_HOST)
+        self.llm_client: ollama.Client = ollama.Client(host=config.OLLAMA_URL)
 
         if self.config.use_tools:
             self.tools = self.config.tools
@@ -109,7 +109,7 @@ class Ollama_Agent(BaseAgent):
 
     class MessageHistory(BaseModel):
         role: str
-        content: str|dict
+        content: str | dict
 
     def messages_append(self, new_message: MessageHistory, msg_hist_object: list[MessageHistory] = []) -> None:
         def msg_len(msg) -> int:

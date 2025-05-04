@@ -37,6 +37,27 @@
             "subProcess": false
         },
         {
+            "name": "Python Debugger: Run DocTests against current module",
+            "envFile":"${workspaceFolder}/.env",
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            },
+            "args": [
+                // Args for the __main__ module are sub module name (relative, so start with a .) 
+                // and then the function or method to call
+                // followed by arguments to the function call
+                ".",
+                "run_doctests",
+                "${file}"
+            ],
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "module": "sweteam",
+            "console": "integratedTerminal",
+            "subProcess": false
+        },
+        {
             "name": "Python Debugger: Arbitary Module",
             "envFile":"${workspaceFolder}/.env",
             "env": {

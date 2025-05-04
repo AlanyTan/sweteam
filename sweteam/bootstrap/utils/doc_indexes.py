@@ -44,14 +44,14 @@ from .redis_pool import RedisConnectionPool
 embedding_dim = 1024
 ollama_embedding = OllamaEmbedding(
     model_name=config.OLLAMA_EMBEDDING_MODEL,
-    base_url=config.OLLAMA_HOST,
+    base_url=config.OLLAMA_URL,
     ollama_additional_kwargs={"mirostat": 0},
 )
 
 Settings.embed_model = ollama_embedding
 
 Settings.llm = Ollama(model=config.OLLAMA_DEFAULT_BASE_MODEL,
-                      base_url=config.OLLAMA_HOST,
+                      base_url=config.OLLAMA_URL,
                       request_timeout=360.0)
 
 
@@ -173,12 +173,12 @@ class Files(Source):
 
         return documents
 
-    async def get_metadata(self, os_stat, metadata:dict = {}) -> dict:
+    async def get_metadata(self, os_stat, metadata: dict = {}) -> dict:
         """Return metadata that are compatible with {doc_id: {doc_size:int, updated_at:datetime}}"""
         metadata.setdefault(f"{self.namespace}size", os_stat.st_size)
         metadata.setdefault(f"{self.namespace}created_at", os_stat.st_ctime)
         metadata.setdefault(f"{self.namespace}updated_at", os_stat.st_mtime)
-        
+
         return metadata
 
     async def get_all_metadata(self) -> dict:
@@ -209,7 +209,7 @@ class IndexStore():
     """
 
     def __init__(self, source: Source, index_schema: dict | None = None,
-                 redis_connection_pool: RedisConnectionPool|None = None, 
+                 redis_connection_pool: RedisConnectionPool | None = None,
                  namespace: str = "", reset: bool = False) -> None:
         self.logger = get_default_logger(self.__class__.__name__)
         self.namespace = namespace or config.PROJECT_NAME
@@ -220,26 +220,25 @@ class IndexStore():
         self.source = source
         self.indexes: dict[str: SummaryIndex | RAKEKeywordTableIndex | VectorStoreIndex] = {}
         self.reset = reset
-        
+
         # Create Redis clients
         self.logger.debug("creating Redis clients... %s:%s", config.REDIS_HOST, config.REDIS_PORT)
         self.redis_pool = redis_connection_pool or RedisConnectionPool()
         self.redis_client = redis_connection_pool.get_client(host=config.REDIS_HOST,
-                                                    port=config.REDIS_PORT,
-                                                    password=config.REDIS_PASSWORD,
-                                                    username=config.REDIS_USERNAME,
-                                                    db=0)
+                                                             port=config.REDIS_PORT,
+                                                             password=config.REDIS_PASSWORD,
+                                                             username=config.REDIS_USERNAME,
+                                                             db=0)
         self.async_redis_client = self.redis_pool.get_async_client(host=config.REDIS_HOST,
-                                                    port=config.REDIS_PORT,
-                                                    password=config.REDIS_PASSWORD,
-                                                    username=config.REDIS_USERNAME,
-                                                    db=0)
+                                                                   port=config.REDIS_PORT,
+                                                                   password=config.REDIS_PASSWORD,
+                                                                   username=config.REDIS_USERNAME,
+                                                                   db=0)
         #  create RedisKVStore to be used by indexes
         self.redis_kvstore = RedisKVStore(redis_client=self.redis_client,
                                           async_redis_client=self.async_redis_client)
-        self.redis_client.publish(f"{self.namespace}{self.name}/status_channel"
-                                  , '{"status": "initializing", "message": "Refreshing Issues..."}')
-
+        self.redis_client.publish(f"{self.namespace}{self.name}/status_channel",
+                                  '{"status": "initializing", "message": "Refreshing Issues..."}')
 
     async def initialize(self) -> None:
         """Initialize the IndexStore asynchronously"""
@@ -260,10 +259,10 @@ class IndexStore():
             # if all 3 stores are found to be in Redis already:
             self.storage_context = await self.connect_to_redis_stores()
 
-            self.indexes["vector_index"] =  VectorStoreIndex.from_vector_store(
+            self.indexes["vector_index"] = VectorStoreIndex.from_vector_store(
                 vector_store=self.storage_context.vector_store
             )
-            self.indexes["summary_index"] =  load_index_from_storage(
+            self.indexes["summary_index"] = load_index_from_storage(
                 self.storage_context, index_id=f"{self.name}_summary"
             )
             self.indexes["keyword_index"] = load_index_from_storage(
@@ -295,7 +294,8 @@ class IndexStore():
         self.logger.debug(f"initialized Issue Index Vector Store...")
 
         await self.load_documents(await self.source.get_all_documents(), force=self.reset)
-        self.redis_client.publish(f"{self.namespace}{self.name}/status_channel", '{"status": "ready", "message": "Issues refreshed."}')
+        self.redis_client.publish(f"{self.namespace}{self.name}/status_channel",
+                                  '{"status": "ready", "message": "Issues refreshed."}')
 
         self.logger.debug("Loaded / refreshed documents for all indexes")
 
@@ -330,12 +330,12 @@ class IndexStore():
 
         #self.redis_kvstore is configured with both sync and async clients
         index_store = RedisIndexStore(redis_kvstore=self.redis_kvstore,
-            namespace=f"{self.namespace}"
-        )
-        
+                                      namespace=f"{self.namespace}"
+                                      )
+
         doc_store = RedisDocumentStore(redis_kvstore=self.redis_kvstore,
-            namespace=f"{self.namespace}"
-        )
+                                       namespace=f"{self.namespace}"
+                                       )
 
         return StorageContext.from_defaults(
             docstore=doc_store,
@@ -355,9 +355,9 @@ class IndexStore():
         if f"{self.namespace}vector".encode('utf-8') in index_list:
             self.logger.info("Index %svector already exists, checking compatibility...", self.namespace)
             info = await self.async_redis_client.execute_command("FT.INFO", f"{self.namespace}vector")
-            info_dict = {info[i]: info[i+1] for i in range(0, len(info), 2)}
+            info_dict = {info[i]: info[i + 1] for i in range(0, len(info), 2)}
             stored_attributes = info_dict.get(b"attributes", [])
-            list_of_dict_attributes = [{attr[i]: attr[i+1] for i in range(0, len(attr), 2)}
+            list_of_dict_attributes = [{attr[i]: attr[i + 1] for i in range(0, len(attr), 2)}
                                        for attr in stored_attributes]
             stored_fields_set = {(attr.get(b"identifier").decode().lower(), attr.get(b"type").decode().lower())
                                  for attr in list_of_dict_attributes}
@@ -433,18 +433,18 @@ class IndexStore():
 
         return fusion_query_engine
 
-    async def delete_docs(self, doc_id_set:set = set()):
+    async def delete_docs(self, doc_id_set: set = set()):
         deleting_list_key = f'{self.namespace}{self.name}_deleting_docs'
 
         unfinished_deletes_b = await self.async_redis_client.get(deleting_list_key)
         unfinished_deletes = json.loads(unfinished_deletes_b) if unfinished_deletes_b else []
 
         docs_to_remove = list(doc_id_set.union(unfinished_deletes))
-        
+
         self.redis_client.set(deleting_list_key, json.dumps(docs_to_remove))
         for index_name, index in self.indexes.items():
-            docs_removed=0
-            nodes_removed=0
+            docs_removed = 0
+            nodes_removed = 0
             need_to_remove_nodes_docs = []
             #Try gracefully delete using index, in exception, fallback to per node removal
             for doc_id in docs_to_remove:
@@ -459,27 +459,26 @@ class IndexStore():
                         index.delete_ref_doc(ref_doc_id=doc_id)
                         docs_removed += 1
                 except Exception as e:
-                    self.logger.warning("Deleting doc %s failed with %s, trying to use it as Source Doc ID..."
-                                        , doc_id, e)
+                    self.logger.warning(
+                        "Deleting doc %s failed with %s, trying to use it as Source Doc ID...", doc_id, e)
                     for doc_id_mapped in [dk for dk, dv in index.docstore.docs.items()
-                                              if dv.metadata[f'{self.namespace}id'] == doc_id]:
+                                          if dv.metadata[f'{self.namespace}id'] == doc_id]:
                         try:
                             index.delete_ref_doc(ref_doc_id=doc_id_mapped)
                             docs_removed += 1
                         except Exception as e:
-                            self.logger.warning("Deleting doc %s as source id also failed with %s, try deleting nodes"
-                                                , doc_id, e)
+                            self.logger.warning(
+                                "Deleting doc %s as source id also failed with %s, try deleting nodes", doc_id, e)
                             need_to_remove_nodes_docs.append(doc_id)
-        
 
             doc_nodes_to_remove = []
-            index_nodes = (index.index_struct.nodes if hasattr(index.index_struct, 'nodes') 
+            index_nodes = (index.index_struct.nodes if hasattr(index.index_struct, 'nodes')
                            else index.index_struct.nodes_dict.keys() if hasattr(index.index_struct, 'nodes_dict')
                            else index.docstore.docs)
             for node_id in index_nodes:
                 try:
                     if (index.docstore.get_node(node_id).metadata[f"{self.namespace}id"] in need_to_remove_nodes_docs
-                        or index.docstore.get_node(node_id).ref_doc_id in need_to_remove_nodes_docs):
+                            or index.docstore.get_node(node_id).ref_doc_id in need_to_remove_nodes_docs):
                         doc_nodes_to_remove.append(node_id)
                 except Exception as e:
                     self.logger.warning("Node %s does not have metadata, will try to delete it anyway...", node_id)
@@ -502,7 +501,7 @@ class IndexStore():
 
             nodes_removed += len(doc_nodes_to_remove)
             self.logger.debug("Removed %s docs and %s nodes from %s.", docs_removed, nodes_removed, index.index_id)
-        
+
         # Delete from doc store
         doc_remove_count = 0
         node_remove_count = 0
@@ -514,23 +513,22 @@ class IndexStore():
                 doc_remove_count += 1
             except Exception as e:
                 self.logger.warning("Removing %s from DocStore run into error, will try to delete nodes "
-                                        "with metadata pointing to it...", doc_to_remove, exc_info=e)
+                                    "with metadata pointing to it...", doc_to_remove, exc_info=e)
                 need_to_delete_by_nodes = True
 
-        if need_to_delete_by_nodes: 
+        if need_to_delete_by_nodes:
             for node_id, node in self.storage_context.docstore.docs.items():
                 #node_id = node.node_id
                 if (hasattr(node, "metadata") and node.metadata.get(f"{self.source.namespace}id") in docs_to_remove
-                    or node.ref_doc_id in docs_to_remove):
+                        or node.ref_doc_id in docs_to_remove):
                     node_remove_count += 1
-                    self.logger.debug("Removing %s belonging to DocId %s..."
-                                      , node_id, node.metadata.get(f"{self.source.namespace}id"))
+                    self.logger.debug("Removing %s belonging to DocId %s...", node_id,
+                                      node.metadata.get(f"{self.source.namespace}id"))
                     await self.storage_context.docstore.adelete_document(doc_id=node_id)
 
         self.logger.debug("Removed %s document and %s nodes from docstore",
-                         doc_remove_count, node_remove_count)
+                          doc_remove_count, node_remove_count)
         await self.async_redis_client.set(deleting_list_key, '[]')
-
 
     async def load_documents(self, document_list: list[Document] = [], force: bool = False):
         """Load documents into the index stores."""
@@ -554,18 +552,18 @@ class IndexStore():
         self.logger.debug("Found %s documents with %s metadata", len(stored_metadata), self.namespace)
 
         if document_list:
-            source_docs_metadata = {d.metadata[f"{self.namespace}id"]: d.metadata 
-                                   for d in document_list if hasattr(d, "metadata")}
+            source_docs_metadata = {d.metadata[f"{self.namespace}id"]: d.metadata
+                                    for d in document_list if hasattr(d, "metadata")}
         else:
             source_docs_metadata = await self.source.get_all_metadata()
-        
+
         docs_to_remove = set()
         docs_to_add = set()
         for _doc_id, metadata in source_docs_metadata.items():
             if force:
                 self.logger.debug("force=True specified, adding File %s ...", _doc_id)
                 docs_to_add.add(_doc_id)
-            elif ((matching_docs_metadata := [v for k, v in stored_metadata.items() 
+            elif ((matching_docs_metadata := [v for k, v in stored_metadata.items()
                                               if v[f"{self.namespace}id"] == _doc_id]) == []):
                 self.logger.debug("Source doc %s was not found in the docstore, will be added...", _doc_id)
                 docs_to_add.add(_doc_id)
@@ -585,7 +583,7 @@ class IndexStore():
                 self.logger.debug("%s not found in source, removing ...", stored__doc_id)
                 docs_to_remove.add(stored__doc_id)
 
-        # Delete from indexes 
+        # Delete from indexes
         await timed_async_execution(self.delete_docs, docs_to_remove)
 
         # Remove from cache
@@ -593,7 +591,7 @@ class IndexStore():
         redis_json_prefix = self.namespace + "RJ:"
         for dtr in docs_to_remove:
             rc = await self.async_redis_client.execute_command("DEL", redis_json_prefix + dtr)
-            self.logger.debug("%s cached document matching %s were removed...",rc, dtr)
+            self.logger.debug("%s cached document matching %s were removed...", rc, dtr)
             cache_remove_count += rc
         self.logger.debug("Removed %s documents from cache", cache_remove_count)
 
@@ -604,7 +602,7 @@ class IndexStore():
                 new_documents = [d for d in document_list if d.metadata[f"{self.source.namespace}id"] in docs_to_add]
             else:
                 new_documents = await self.source.get_documents(doc_id_list=docs_to_add)
-            
+
             self.logger.debug("Determined %s new/modified documents to load", len(docs_to_add))
 
         # Cache the original documents
@@ -620,7 +618,7 @@ class IndexStore():
                     ".",
                     json.dumps(orig_doc)
                 )
-        except Exception as e: 
+        except Exception as e:
             self.logger.warning("Unable to process orig doc as JSON, will skip caching in Redis...", exc_info=e)
 
         # Insert new documents to indexes
@@ -637,7 +635,7 @@ class IndexStore():
             if self.async_redis_client:
                 redisjson_keys = await self.async_redis_client.execute_command("KEYS", f"{redis_json_prefix}*")
             else:
-                redisjson_keys = self.redis_client.execute_command("KEYS", f"{redis_json_prefix}*")           
+                redisjson_keys = self.redis_client.execute_command("KEYS", f"{redis_json_prefix}*")
             for k in redisjson_keys:
                 if self.async_redis_client:
                     b_value = await self.async_redis_client.execute_command("JSON.GET", k)

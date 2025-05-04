@@ -2,10 +2,11 @@ from abc import ABC, abstractmethod
 import json
 import os
 import re
-
+from ollama import ChatResponse
 from pydantic import BaseModel
 from ..utils import issue_manager, dir_structure, execute_command, execute_module
 from ..utils.log import get_logger
+
 
 class BaseAgent(ABC):
     _instances = []
@@ -35,9 +36,16 @@ class BaseAgent(ABC):
         def to_dict(self) -> dict:
             return self.__dict__
 
+    class Message(BaseModel):
+        role: str  # e.g., "system", "user", "assistant"
+        content: str
+
+    class Response(BaseModel):
+        message: 'BaseAgent.Message'
+
     class LLMClient(ABC):
         @abstractmethod
-        def chat(self, messages: list, **kwargs) -> dict:
+        def chat(self, messages: list, **kwargs) -> 'BaseAgent.Response':
             """Abstract chat method.
 
             Args:
@@ -99,7 +107,7 @@ class BaseAgent(ABC):
             return list(temp_instances)
         else:
             return cls._instances  # Return the list of all instances for this class
- 
+
     # method to list/read/write issues
     def issue_manager(self, action: str, issue: str = '',
                       only_in_state: list = [], content: str = None,
@@ -184,7 +192,7 @@ class BaseAgent(ABC):
             File deleteme.test has been written successfully.
         """
         self.logger.debug(
-            "%swriting file %s with content %s", "over" if force else '', filename,content)
+            "%swriting file %s with content %s", "over" if force else '', filename, content)
 
         if not os.path.exists(filename) or force:
             try:

@@ -25,9 +25,26 @@ dependencies = [
     "llama-index-readers-json>=0.3.0",
     "aiofiles>=24.1.0",
     "sse-starlette>=2.1.3",
+    "python-lsp-server[all]>=1.12.2",
+    "pyright>=1.1.399",
+    "black>=25.1.0",
+    "ruff>=0.11.5",
 ]
 
 [dependency-groups]
 dev = ["pytest>=8.2.0,<9"]
 
+
+[tool.black]
+line-length = 88
+target-version = ['py37']
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 88
+select = ["E", "F", "I"]
+ignore = []
+
+[tool.pyright]
+typeCheckingMode = "basic"
 

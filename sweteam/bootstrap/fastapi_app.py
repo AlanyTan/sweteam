@@ -23,6 +23,7 @@ from .utils.issue_management import IssueManager
 from .utils.redis_pool import RedisConnectionPool
 from .config import config
 
+
 class ChatMessage(BaseModel):
     message: str
     issue_id: str
@@ -42,21 +43,29 @@ class IssueManagementApp:
         self._setup_templates()
         self.issue_manager = None
         self.redis_client = self.redis_pool.get_client(host=config.REDIS_HOST,
-                                                    port=config.REDIS_PORT,
-                                                    password=config.REDIS_PASSWORD,
-                                                    username=config.REDIS_USERNAME,
-                                                    db=0)
+                                                       port=config.REDIS_PORT,
+                                                       password=config.REDIS_PASSWORD,
+                                                       username=config.REDIS_USERNAME,
+                                                       db=0)
         self.async_redis_client = self.redis_pool.get_async_client(host=config.REDIS_HOST,
-                                                    port=config.REDIS_PORT,
-                                                    password=config.REDIS_PASSWORD,
-                                                    username=config.REDIS_USERNAME,
-                                                    db=0)
+                                                                   port=config.REDIS_PORT,
+                                                                   password=config.REDIS_PASSWORD,
+                                                                   username=config.REDIS_USERNAME,
+                                                                   db=0)
         # Add startup and shutdown events
         self.app.add_event_handler("startup", self.startup_event)
         self.app.add_event_handler("shutdown", self.shutdown_event)
 
         self.initialization_task: Optional[asyncio.Task] = None
         self.initialized = asyncio.Event()
+
+    def __enter__(self):
+        # Setup logic for the context manager
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        # Cleanup logic for the context manager
+        pass
 
     def _setup_static_files(self):
         """Set up static files directory"""
@@ -80,7 +89,8 @@ class IssueManagementApp:
         self.issue_manager = IssueManager(redis_connection_pool=self.redis_pool)
         self.initialization_task = asyncio.create_task(self.issue_manager.initialize())
         asyncio.create_task(self.monitor_ready_status())
-        self.logger.debug("Finished Setting up issue_manager for the FastAPI app, handling initialization to separate task...")
+        self.logger.debug(
+            "Finished Setting up issue_manager for the FastAPI app, handling initialization to separate task...")
         return self.issue_manager
 
     async def shutdown_event(self):
@@ -92,7 +102,7 @@ class IssueManagementApp:
                 await self.initialization_task
             except asyncio.CancelledError:
                 pass
-    
+
         if self.issue_manager:
             await self.issue_manager.__aexit__(None, None, None)
 
@@ -114,7 +124,8 @@ class IssueManagementApp:
                             break
                     except json.JSONDecodeError:
                         if data.strip() == "ready":
-                            self.logger.debug("Received plain 'ready' status via async client. Setting initialized event.")
+                            self.logger.debug(
+                                "Received plain 'ready' status via async client. Setting initialized event.")
                             self.initialized.set()
                             break
         else:
@@ -135,7 +146,8 @@ class IssueManagementApp:
                             break
                     except json.JSONDecodeError:
                         if data.strip() == "ready":
-                            self.logger.debug("Received plain 'ready' status via sync client. Setting initialized event.")
+                            self.logger.debug(
+                                "Received plain 'ready' status via sync client. Setting initialized event.")
                             self.initialized.set()
                             break
                 await asyncio.sleep(0.1)
@@ -149,7 +161,7 @@ class IssueManagementApp:
         self.app.get("/api/issues")(self.list_issues)
         self.app.get("/api/status")(self.status_endpoint)
 
-    async def status_endpoint(self, request: Request):            
+    async def status_endpoint(self, request: Request):
         async def event_generator():
             if self.initialized.is_set():
                 yield {"event": "message", "data": '{"status": "ready", "message": "Already initialized"}'}
@@ -177,7 +189,7 @@ class IssueManagementApp:
                     raise
 
         return EventSourceResponse(event_generator())
-    
+
     async def get_issue_list(self) -> list:
         """Get list of all issues with basic information"""
         issues = await self.issue_manager.get_cached_doc_metadata() or await self.issue_manager.source.get_all_metadata()
@@ -215,7 +227,7 @@ class IssueManagementApp:
             else:
                 # if this is created by Document(...)
                 found_issue = dict(found_issue_raw.get("text_resource"))
-        
+
             if found_issue:
                 issue = {}
                 issue["id"] = issue_id
@@ -223,7 +235,7 @@ class IssueManagementApp:
                 issue["created"] = found_issue_metadata.get(f"{self.issue_manager.namespace}created_at", "unknown")
                 issue["updated"] = found_issue_metadata.get(f"{self.issue_manager.namespace}updated_at", "unknown")
                 issue["status"] = found_issue_metadata.get(f"{self.issue_manager.namespace}status", "unknown")
-                
+
                 # Process description
                 description = found_issue.get("description") or found_issue.get("text", '{}')
                 issue["description"] = self._parse_json_string(description)
@@ -240,7 +252,7 @@ class IssueManagementApp:
                 issue["attributes"] = {}
                 for key, value in found_issue.items():
                     if key not in ["description", "comments", "changelog"]:
-                        issue["attributes"][key] = value            
+                        issue["attributes"][key] = value
 
                 return issue
         except Exception as e:

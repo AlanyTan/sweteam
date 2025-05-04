@@ -17,10 +17,11 @@ from .initialize_project import initialize_package, initialize_Dockerfile, initi
 from .log import logger
 from ..config import config
 
+
 def get_dot_notation_value(dict_obj, dot_path, default=None):
     """
     Access nested dictionary values using dot notation
-    
+
     Args:
         dict_obj (dict): The dictionary to search
         dot_path (str): Path to value using dot notation (e.g. "status.name")
@@ -37,9 +38,10 @@ def get_dot_notation_value(dict_obj, dot_path, default=None):
     except (KeyError, TypeError):
         return default
 
+
 def timed_execution(f: Callable, *args, **kwargs) -> Any:
     import time
-    method_name=f.__self__.__class__.__name__ + "." + f.__name__ if hasattr(f, '__self__') else f.__name__
+    method_name = f.__self__.__class__.__name__ + "." + f.__name__ if hasattr(f, '__self__') else f.__name__
     logger.info("Start timed execution of %s...", method_name)
     start_time = time.time()
     return_value = f(*args, **kwargs)
@@ -48,9 +50,10 @@ def timed_execution(f: Callable, *args, **kwargs) -> Any:
     logger.info("Timed Execution of %s completed in %.2f seconds", method_name, elapsed_time)
     return return_value
 
+
 async def timed_async_execution(f: Callable, *args, **kwargs) -> Any:
     import time
-    method_name=f.__self__.__class__.__name__ + "." + f.__name__ if hasattr(f, '__self__') else f.__name__
+    method_name = f.__self__.__class__.__name__ + "." + f.__name__ if hasattr(f, '__self__') else f.__name__
     logger.info("Start timed Async execution of %s...", method_name)
     start_time = time.time()
     return_value = await f(*args, **kwargs)
@@ -67,6 +70,7 @@ class Action(Enum):
     READ = "read"
     UPDATE = "update"
     ASSIGN = "assign"
+
 
 def issue_manager(action: str, issue: str = '', only_in_state: list = [],
                   content: str | None = None, assignee: str | None = None, caller: str = "unknown") -> dict | list:
@@ -360,10 +364,10 @@ def execute_module(module_name: str, method_name: str | None = None, args: list 
         A dictionary with 'output' or 'error' as a key.
 
     Example::
-        >>> agent = OpenAI_Agent("pm")
-        >>> agent.execute_module('math', 'sqrt', args=[16]).strip()
+        >>> import os
+        >>> execute_module('math', 'sqrt', args=[16]).strip()
         '{"output": 4.0}'
-        >>> result = agent.execute_module('os', 'getcwd')
+        >>> result = execute_module('os', 'getcwd')
         >>> os.getcwd() in result
         True
 
@@ -422,14 +426,14 @@ def execute_command(command_name: str, args: list = [], asynchronous: bool = Fal
         A dictionary with 'output' or 'error' as a key.
 
     Example::
-        >>> agent = OpenAI_Agent("pm")
-        >>> agent.execute_command('echo', args=['hello', 'world'])
+        >>> import os
+        >>> execute_command('echo', args=['hello', 'world'])
         '{"output": "hello world\\\\n"}'
-        >>> result = agent.execute_command('pwd')
+        >>> result = execute_command('pwd')
         >>> import json
         >>> json.loads(result).get('output').strip() == os.getcwd()
         True
-        >>> agent.execute_command('ls', args=['non-exist.dir'])
+        >>> execute_command('ls', args=['non-exist.dir'])
         "execute_command returned non-0 return code. Output:, Error: ls: cannot access 'non-exist.dir': No such file or directory\\n"
     """
     import json
