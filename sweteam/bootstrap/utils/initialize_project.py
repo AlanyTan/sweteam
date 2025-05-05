@@ -25,12 +25,13 @@ def initialize_agent_files(agent_parent_dir: str | None = None) -> str:
 
             config_in_json.update(agent)
 
-            for idx, tool in enumerate(agent.get("tools",[])):
+            for idx, tool in enumerate(agent.get("tools", [])):
                 if isinstance(tool, str):
                     index = config_in_json["tools"].index(tool)
-                    config_in_json["tools"][index:index+1] = [t for t in standard_tools if t.get("function",{"name":""}).get("name") == tool]
+                    config_in_json["tools"][index:index +
+                                            1] = [t for t in standard_tools if t.get("function", {"name": ""}).get("name") == tool]
                     config_in_json["instruction"] = config_in_json.get("instruction", '') \
-                        + tool_instructions.get(tool,'')
+                        + tool_instructions.get(tool, '')
 
             with open(fullpath_json, "w") as f:
                 json.dump(config_in_json, f, indent=4)
@@ -135,8 +136,7 @@ CMD ["poetry", "run", "python", "-m", "{project_name}"]
         dockerfile_path = os.path.join(os.getcwd(), "Dockerfile")
     base_Dockerfile.replace("{project_name}", project_name)
     if os.path.exists(dockerfile_path):
-        result = (f"<init Dockerfile> {
-                  dockerfile_path} already exist, will not overwrite it, exiting...\n")
+        result = (f"<init Dockerfile> {dockerfile_path} already exist, will not overwrite it, exiting...\n")
     else:
         try:
             with open(dockerfile_path, "w") as df:
@@ -144,8 +144,7 @@ CMD ["poetry", "run", "python", "-m", "{project_name}"]
         except Exception as e:
             result = f"<init Dockerfile> got an Error: {e}\n"
         else:
-            result = f"<init Dockerfile> {dockerfile_path} for {
-                project_name} has been successfully initialized.\n"
+            result = f"<init Dockerfile> {dockerfile_path} for {project_name} has been successfully initialized.\n"
     base_docker_compose = f"""\
 services:
   {project_name}:
@@ -158,8 +157,7 @@ services:
     docker_compose_path = os.path.join(os.path.dirname(
         (dockerfile_path)), "docker-compose.yaml")
     if os.path.exists(docker_compose_path):
-        result += (f"<init Dockerfile> {
-                   docker_compose_path} already exist, will not overwrite it, exiting...")
+        result += (f"<init Dockerfile> {docker_compose_path} already exist, will not overwrite it, exiting...")
     else:
         try:
             with open(docker_compose_path, "w") as df:
@@ -167,8 +165,8 @@ services:
         except Exception as e:
             result += f"<init Dockerfile> got an Error: {e}"
         else:
-            result += f"<init Dockerfile> {docker_compose_path} for {
-                project_name} has been successfully initialized."
+            result += (f"<init Dockerfile> {docker_compose_path} for "
+                       "{project_name} has been successfully initialized.")
     return result
 
 

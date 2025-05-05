@@ -9,7 +9,8 @@ from ..config import config
 
 
 def get_logger(name: str, stream: str | bool = 'INFO', file: str | bool = '',
-               *, log_file: str = '', level: str = 'DEBUG') -> logging.Logger:
+               *, log_file: str = '', level: str = 'DEBUG',
+               redis_level: str | bool = '') -> logging.Logger:
     """configure a logger with multiple handlers
 
     Args:
@@ -17,9 +18,10 @@ def get_logger(name: str, stream: str | bool = 'INFO', file: str | bool = '',
         stream: set stream log level, default is 'INFO'
         file: set rotating file log level, default is OFF
         level: the logger's own level, default is 'DEBUG'
+        redis_level: set redis log level, default is OFF
 
-    Yields:
-        logger: the logger object with name and handler set up
+    Returns:
+        logger: the logger object with name and handlers set up
     """
     LOG_LEVEL = {
         "INFO": logging.INFO,
@@ -51,10 +53,23 @@ def get_logger(name: str, stream: str | bool = 'INFO', file: str | bool = '',
                 log_file, maxBytes=10485760, backupCount=9, encoding='utf-8')
             file_handler.setLevel(LOG_LEVEL[file])
             f_format = logging.Formatter("%(asctime)s %(levelname)s - %(name)s "
-                                        "- %(filename)s:%(lineno)d  "
-                                        "%(module)s.%(funcName)s() - %(message)s")
+                                         "- %(filename)s:%(lineno)d  "
+                                         "%(module)s.%(funcName)s() - %(message)s")
             file_handler.setFormatter(f_format)
             logger_.addHandler(file_handler)
+
+    # Add Redis handler if configured
+    if redis_level in LOG_LEVEL:
+        from .redis_log_handler import RedisLogHandler
+        redis_handler = RedisLogHandler(
+            host=config.REDIS_HOST,
+            port=config.REDIS_PORT,
+            stream_name=f"{config.PROJECT_NAME}_logs"
+        )
+        redis_handler.setLevel(LOG_LEVEL[redis_level])
+        r_format = logging.Formatter("%(message)s")
+        redis_handler.setFormatter(r_format)
+        logger_.addHandler(redis_handler)
 
     if not logger_.hasHandlers():
         logger_.addHandler(logging.NullHandler())
@@ -63,26 +78,28 @@ def get_logger(name: str, stream: str | bool = 'INFO', file: str | bool = '',
 
 
 def get_default_logger(name: str = '', stream: str | bool | None = None, file: str | bool | None = None,
-               *, log_file: str | None = None, level: str | None = None) -> logging.Logger:
+                       *, log_file: str | None = None, level: str | None = None, redis_level: str | None = None) -> logging.Logger:
     logger_name = config.PROJECT_NAME if name is None else name
     stream_level = config.LOG_LEVEL_CONSOLE if stream is None else stream
     file_level = config.LOG_LEVEL if file is None else file
     log_level = config.LOG_LEVEL if level is None else level
+    redis_level = config.LOG_LEVEL_REDIS if redis_level is None else redis_level
     log_filename = ((config.PROJECT_NAME or os.path.basename(
         os.getcwd())) + ".log") if log_file is None else log_file
 
-    return get_logger(logger_name, stream_level, file_level, log_file=log_filename, level=log_level)
+    return get_logger(logger_name, stream_level, file_level, log_file=log_filename, level=log_level, redis_level=redis_level)
 
 
-logger = get_default_logger((__package__ or __name__ or ""))
+logger = get_default_logger((__package__ or __name__ or "default_logger"))
 logger.debug(
-    "default logger initialized with the following handlers %s.", logger.handlers)
+    "utils default logger initialized with the following handlers %s.", logger.handlers)
 
 
 @contextmanager
 def logging_context(*args, **kwargs) -> Generator[logging.Logger, None, None]:
     """use contextmanager to setup/shutdown logging
-    Should only use in the main fun of a project, not in sub modules"""
+    Only use in the main function of a project, not a sub module
+    """
     try:
         yield logger
     finally:
@@ -93,4 +110,3 @@ def logging_context(*args, **kwargs) -> Generator[logging.Logger, None, None]:
             print(f"Can't log final message to logger, {e=}"
                   "shutting down the logging facility...")
         logging.shutdown()
-

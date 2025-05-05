@@ -58,16 +58,12 @@ if __name__ == "__main__":
                                     for seq, key in enumerate(upd):
                                         match seq:
                                             case 0:
-                                                border_char = f"{0x2514:c}{
-                                                    0x252c:c}{0x2500:c}"
+                                                border_char = f"{0x2514:c}{0x252c:c}{0x2500:c}"
                                             case n if n == upd_len - 1:
-                                                border_char = f" {
-                                                    0x2514:c}{0x2500:c}"
+                                                border_char = f"{0x2514:c}{0x2500:c}"
                                             case _:
-                                                border_char = f" {
-                                                    0x251c:c}{0x2500:c}"
-                                        print(f"    {border_char}\t{
-                                              key.capitalize()}: {upd[key]}")
+                                                border_char = f"{0x251c:c}{0x2500:c}"
+                                        print(f"    {border_char}\t{key.capitalize()}: {upd[key]}")
                             else:
                                 print(f"{key_.upper()}: {issue_result[key_]}")
                         else:
@@ -76,10 +72,8 @@ if __name__ == "__main__":
                                 print(f" {key:7}: {key_[key]:11}", end=" ")
                             print("\t")
                 except Exception as e:
-                    logger.error(f"Error processing issue_manager request: {
-                          e}, at line {e.__traceback__.tb_lineno}", exc_info=e)
-                    print(f"Usage: python -m {os.path.basename(
-                        __file__)} issue_manager list|read|update|create [issue='1/1'] [only_in_state='new,in progress'] [content='json str of an issue update']")
+                    logger.error(f"Error processing issue_manager request: {e}, at line {e.__traceback__.tb_lineno}")
+                    print(f"Usage: python -m {os.path.basename(__file__)} issue_manager list|read|update|create [issue='1/1'] [only_in_state='new,in progress'] [content='json str of an issue update']")
                 sys.exit(0)
             case "dir_structure":
                 dir_structure_args = {}
@@ -102,5 +96,4 @@ if __name__ == "__main__":
             case _ as wrong_arg:
                 logger.warning(f"{wrong_arg} is not a valid option")
 
-    print(f"Usage: python -m {os.path.basename(__file__)
-                              } [test|update_agents|issue_manager|dir_structure]")
+    print(f"Usage: python -m {os.path.basename(__file__)} [test|update_agents|issue_manager|dir_structure]")
