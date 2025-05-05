@@ -25,10 +25,17 @@ def main() -> None:
     # # Run database migrations
     # run_migrations()
 
-    # Start the application
-    from .bootstrap.fastapi_app import IssueManagementApp
-    with IssueManagementApp() as app:
-        app.run()
+    # # Start the application
+    # from .bootstrap.fastapi_app import IssueManagementApp
+    # with IssueManagementApp() as app:
+    #     app.run()
+
+    from bootstrap.orchestrator import OllamaOrchestrator, OrchestratorFactory
+
+    orchestrator = OrchestratorFactory.create(
+        agent_config_file="issue_evaluator/src/agents/orchestrator.json"
+    )
+    orchestrator.orchestrate()
 
 
 if __name__ == "__main__":

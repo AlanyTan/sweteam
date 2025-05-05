@@ -13,8 +13,11 @@ def dir_tree(path_: str, return_yaml: bool = False) -> str:
         path - to list
         return_yaml - if True, retrun YAML format
 
-    >>> dir_tree("issue_board", True) #.split('\\n')[2]
-    "    - 1.json: ''"
+    >>> import yaml
+    >>> dir_obj = yaml.load(dir_tree("issue_board", True))
+    >>> dir_obj['issue_board']['type']
+    'directory'
+
     """
     def extract_desc(file_path: str) -> str:
         """Extract the description from the file
@@ -237,33 +240,33 @@ def dir_contains(directory, files: bool = True, dirs: bool = False, pattern: str
     >>> import tempfile, os
     >>> # Test with an empty directory: should return False.
     >>> with tempfile.TemporaryDirectory() as tmp:
-    ...     dir_contain(tmp)
+    ...     dir_contains(tmp)
     False
 
     >>> # Test with a file in the directory: should return True.
     >>> with tempfile.TemporaryDirectory() as tmp:
     ...     open(os.path.join(tmp, "file.txt"), "w").close()
-    ...     dir_contain(tmp)
+    ...     dir_contains(tmp)
     True
 
     >>> # Test with a subdirectory when checking for directories: should return True.
     >>> with tempfile.TemporaryDirectory() as tmp:
     ...     os.mkdir(os.path.join(tmp, "subdir"))
-    ...     dir_contain(tmp, files=False, dirs=True)
+    ...     dir_contains(tmp, files=False, dirs=True)
     True
 
     >>> # Test with a nested file not directly in the target directory: without recursion should return False.
     >>> with tempfile.TemporaryDirectory() as tmp:
     ...     os.mkdir(os.path.join(tmp, "subdir"))
     ...     open(os.path.join(tmp, "subdir", "file.txt"), "w").close()
-    ...     dir_contain(tmp)
+    ...     dir_contains(tmp)
     False
 
     >>> # With recursion enabled, the nested file should be detected.
     >>> with tempfile.TemporaryDirectory() as tmp:
     ...     os.mkdir(os.path.join(tmp, "subdir"))
     ...     open(os.path.join(tmp, "subdir", "file.txt"), "w").close()
-    ...     dir_contain(tmp, recursive=True)
+    ...     dir_contains(tmp, recursive=True)
     True
     """
     if not os.path.exists(directory):
@@ -277,10 +280,10 @@ def dir_contains(directory, files: bool = True, dirs: bool = False, pattern: str
                 return True
     else:
         for fd in os.listdir(directory):
-            if (files and any(regex.match(s) for s in dirs_)
+            if (files and any(regex.match(s) for s in fd)
                     and os.path.isfile(os.path.join(directory, fd))):
                 return True
-            if (dirs and any(regex.match(s) for s in dirs_)
+            if (dirs and any(regex.match(s) for s in fd)
                     and os.path.isdir(os.path.join(directory, fd))):
                 return True
 

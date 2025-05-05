@@ -3,6 +3,7 @@ import unittest
 import pkgutil
 import importlib
 import sys
+import os
 
 
 class TestKeyClasses(unittest.IsolatedAsyncioTestCase):
@@ -45,12 +46,24 @@ def patched_init(self, test, optionflags=0, setUp=None, tearDown=None, checker=N
         elif not "." in test_name:
             test.name = module_name + ".module_level." + test_name
 
+        #test.__unittest_location__ = (test.filename, test.lineno, test.name)
+        test.line = test.lineno
     # Call original init
     original_init(self, test, optionflags, setUp, tearDown, checker)
 
 
 # Apply the patch
 doctest.DocTestCase.__init__ = patched_init
+
+# original_id = doctest.DocTestCase.id
+
+
+# def patched_id(self, *args, **kwargs):
+#     orig_id = original_id(self, *args, **kwargs)
+#     return f"{orig_id}.className.(Line: {self._dt_test.lineno})"
+
+
+# doctest.DocTestCase.id = patched_id
 
 
 def load_tests(loader, tests, ignore) -> unittest.TestSuite:
@@ -59,11 +72,12 @@ def load_tests(loader, tests, ignore) -> unittest.TestSuite:
     Load all doctests from the current package and its subpackages.
     """
 
-    for _, module_name, _ in pkgutil.walk_packages(["."]):
-        package_name = module_name.split(".")[0]
+    current_dir = os.path.dirname(__file__)
+    for _, module_name, _ in pkgutil.walk_packages([current_dir]):
+        #package_name = module_name.split(".")[0]
         # Fix duplicated levels in module names
-        if module_name.startswith(package_name + "."):
-            module_name = module_name[len(package_name) + 1:]
+        # if module_name.startswith(package_name + "."):
+        #     module_name = module_name[len(package_name) + 1:]
         module = importlib.import_module(module_name)
         module.__name__ = module_name  # Ensure the module name is correctly set to avoid duplication
 

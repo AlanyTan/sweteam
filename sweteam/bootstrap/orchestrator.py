@@ -508,11 +508,14 @@ class OpenAIOrchestrator(openai_agent.OpenAI_Agent, Orchestrator):
 
 class OrchestratorFactory(Orchestrator):
     @staticmethod
-    def create(type: str):
-        if type == "ollama":
-            return OllamaOrchestrator()
-        elif type == "openai":
-            return OpenAIOrchestrator()
+    def create(agent_config_file: str) -> OllamaOrchestrator | OpenAIOrchestrator:
+        with open(agent_config_file, 'r') as f:
+            config = json.load(f)
+        agent_type = config.get("type")
+        if agent_type == "ollama":
+            return OllamaOrchestrator(config)
+        elif agent_type == "openai":
+            return OpenAIOrchestrator(config)
         else:
             raise ValueError("Agent type %s not recognized.", type)
 
