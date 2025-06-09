@@ -303,10 +303,10 @@ async def issue_manager(action: str, issue: str = '', only_in_state: list = [],
             case "create":
                 try:
                     issue_dict = {
-                        'project': {'key': config.JIRA_PROJECT_KEY},
+                        'project': {'key': config.PROJECT_NAME},
                         'summary': content_obj.get('title', content_obj.get('summary', 'No title provided')),
                         'description': content_obj.get('description', content_obj.get('body', '')),
-                        'issuetype': {'name': config.JIRA_ISSUE_TYPE}
+                        'issuetype': {'name': "incident"},
                     }
 
                     if assignee:

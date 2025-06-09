@@ -8,7 +8,14 @@ The issues are indexed using the llama_index library, which provides a vector st
 index for querying the issues. The index is created from the documents in the issue directory.
 
 """
+from .redis_pool import RedisConnectionPool
+from .file_utils import dir_contains
+from .decorators import timed_async_execution, timed_execution
+from .log import get_logger, get_default_logger
+from ..config import config
+from redis.asyncio import Redis as AsyncRedis, ConnectionPool as AsyncConnectionPool
 from abc import ABC, abstractmethod
+from typing import cast
 
 from llama_index.core.indices.base import BaseIndex
 import nest_asyncio
@@ -17,11 +24,13 @@ import os
 import json
 import hashlib
 from llama_index.core import (VectorStoreIndex, load_index_from_storage,
-                              SimpleKeywordTableIndex, RAKEKeywordTableIndex, SummaryIndex,
+                              RAKEKeywordTableIndex, SummaryIndex,
                               SimpleDirectoryReader, StorageContext, Settings, Document)
+from llama_index.core.schema import BaseNode
 from llama_index.core.node_parser import SentenceSplitter, JSONNodeParser
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.retrievers import QueryFusionRetriever
+from llama_index.core.retrievers.fusion_retriever import FUSION_MODES
 
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.ollama import OllamaEmbedding
@@ -30,15 +39,10 @@ from llama_index.vector_stores.redis import RedisVectorStore
 from llama_index.storage.index_store.redis import RedisIndexStore
 from llama_index.storage.docstore.redis import RedisDocumentStore
 
-from redis import Redis, ConnectionPool
-nest_asyncio.apply()
-from redis.asyncio import Redis as AsyncRedis, ConnectionPool as AsyncConnectionPool
 
-from ..config import config
-from .log import get_logger, get_default_logger
-from . import timed_async_execution, timed_execution
-from .file_utils import dir_contains
-from .redis_pool import RedisConnectionPool
+from redisvl.schema import IndexSchema
+nest_asyncio.apply()
+
 
 # bge-m3 embedding model uses 1024 dimmesions
 embedding_dim = 1024
@@ -131,7 +135,8 @@ class Files(Source):
         documents = []
         if os.path.exists(self.path) and dir_contains(self.path, recursive=True):
             self.logger.info("Issue directory <%s> found, using it...", self.path)
-            documents = await SimpleDirectoryReader(self.path, recursive=True).aget_data()
+            reader = SimpleDirectoryReader(self.path, recursive=True)
+            documents = reader.load_data()
             for document in documents:
                 if hasattr(document, "metadata"):
                     file_path = document.metadata["file_path"]
@@ -140,9 +145,9 @@ class Files(Source):
                         "size": document.metadata["file_size"]}
                     await self.get_metadata(os.stat(file_path), metadata)
                     for k, v in metadata.items():
-                        document.metadata[f"{self.source.namespace}{k}"] = v
+                        document.metadata[f"{self.namespace}{k}"] = v
                 else:
-                    self.warning("Document %s does not have metadata, this is strange!", document)
+                    self.logger.warning("Document %s does not have metadata, this is strange!", document)
 
         return documents
 
@@ -151,7 +156,7 @@ class Files(Source):
         documents = []
         doc_path_list = [os.path.join(self.path, id) for id in doc_id_list]
         if any([os.path.exists(f) for f in doc_path_list]):
-            documents = await SimpleDirectoryReader(input_files=doc_path_list).aget_data()
+            documents = await SimpleDirectoryReader(input_files=doc_path_list).aload_data()
             for document in documents:
                 if hasattr(document, "metadata"):
                     file_path = document.metadata["file_path"]
@@ -167,9 +172,9 @@ class Files(Source):
 
                     metadata["title"] = file_content.get("title") or file_content.get("Summary")
                     for k, v in metadata.items():
-                        document.metadata[f"{self.source.namespace}{k}"] = v
+                        document.metadata[f"{self.namespace}{k}"] = v
                 else:
-                    self.warning("Document %s does not have metadata, this is strange!", document)
+                    self.logger.warning("Document %s does not have metadata, this is strange!", document)
 
         return documents
 
@@ -213,22 +218,22 @@ class IndexStore():
                  namespace: str = "", reset: bool = False) -> None:
         self.logger = get_default_logger(self.__class__.__name__)
         self.namespace = namespace or config.PROJECT_NAME
-        self.index_schema = index_schema
+        self.index_schema = cast(IndexSchema, index_schema)
         if (not hasattr(self, "name")):
             self.name = {self.__class__.__name__}
 
         self.source = source
-        self.indexes: dict[str: SummaryIndex | RAKEKeywordTableIndex | VectorStoreIndex] = {}
+        self.indexes: dict[str, (SummaryIndex | RAKEKeywordTableIndex | VectorStoreIndex | BaseIndex)] = {}
         self.reset = reset
 
         # Create Redis clients
         self.logger.debug("creating Redis clients... %s:%s", config.REDIS_HOST, config.REDIS_PORT)
         self.redis_pool = redis_connection_pool or RedisConnectionPool()
-        self.redis_client = redis_connection_pool.get_client(host=config.REDIS_HOST,
-                                                             port=config.REDIS_PORT,
-                                                             password=config.REDIS_PASSWORD,
-                                                             username=config.REDIS_USERNAME,
-                                                             db=0)
+        self.redis_client = self.redis_pool.get_client(host=config.REDIS_HOST,
+                                                       port=config.REDIS_PORT,
+                                                       password=config.REDIS_PASSWORD,
+                                                       username=config.REDIS_USERNAME,
+                                                       db=0)
         self.async_redis_client = self.redis_pool.get_async_client(host=config.REDIS_HOST,
                                                                    port=config.REDIS_PORT,
                                                                    password=config.REDIS_PASSWORD,
@@ -248,12 +253,12 @@ class IndexStore():
         try:
             # try to reconnect to storage_context and retrieve vectorindex/summary&keyword index/docs
             index_list = await self.async_redis_client.execute_command("FT._LIST")
-            if f"{self.namespace}vector".encode('utf-8') not in index_list:
+            if index_list is None or f"{self.namespace}vector".encode('utf-8') not in index_list:
                 raise IndexError("Vector Index not found in Redis")
 
             redis_keys = await self.async_redis_client.execute_command("keys", f"{self.namespace}*")
             for store_type in ["doc", "index"]:
-                if f"{self.namespace}/{store_type}".encode('utf-8') not in redis_keys:
+                if redis_keys is None or f"{self.namespace}/{store_type}".encode('utf-8') not in redis_keys:
                     raise IndexError(f"{store_type} store is not found in Redis")
 
             # if all 3 stores are found to be in Redis already:
@@ -262,12 +267,12 @@ class IndexStore():
             self.indexes["vector_index"] = VectorStoreIndex.from_vector_store(
                 vector_store=self.storage_context.vector_store
             )
-            self.indexes["summary_index"] = load_index_from_storage(
+            self.indexes["summary_index"] = cast(SummaryIndex, load_index_from_storage(
                 self.storage_context, index_id=f"{self.name}_summary"
-            )
-            self.indexes["keyword_index"] = load_index_from_storage(
+            ))
+            self.indexes["keyword_index"] = cast(RAKEKeywordTableIndex, load_index_from_storage(
                 self.storage_context, index_id=f"{self.name}_keyword"
-            )
+            ))
 
             # Create retrievers from each index
             summary_retriever = self.indexes["summary_index"].as_retriever()
@@ -279,7 +284,7 @@ class IndexStore():
                 retrievers=[summary_retriever, vector_retriever, keyword_retriever],
                 similarity_top_k=3,
                 num_queries=1,
-                mode="simple"
+                mode=FUSION_MODES.SIMPLE
             )
 
             # Create a query engine from the fusion retriever
@@ -299,7 +304,7 @@ class IndexStore():
 
         self.logger.debug("Loaded / refreshed documents for all indexes")
 
-    def docs_to_nodes(self, documents) -> list[Document]:
+    def docs_to_nodes(self, documents) -> list[Document | BaseNode]:
         """Convert documents to nodes."""
         nodes = []
         try:
@@ -321,14 +326,14 @@ class IndexStore():
 
     async def connect_to_redis_stores(self) -> StorageContext:
         """Connect to Redis stores and return storage context."""
-        #VectorStore does not support using redis_kvstore to provide both sync and async clients
+        # VectorStore does not support using redis_kvstore to provide both sync and async clients
         vector_store = RedisVectorStore(
             redis_client=self.redis_client,
             overwrite=False,
             schema=self.index_schema
         )
 
-        #self.redis_kvstore is configured with both sync and async clients
+        # self.redis_kvstore is configured with both sync and async clients
         index_store = RedisIndexStore(redis_kvstore=self.redis_kvstore,
                                       namespace=f"{self.namespace}"
                                       )
@@ -352,27 +357,32 @@ class IndexStore():
         index_list = await self.async_redis_client.execute_command("FT._LIST")
         self.logger.debug("Existing indexes: %s", index_list)
 
-        if f"{self.namespace}vector".encode('utf-8') in index_list:
+        if index_list and f"{self.namespace}vector".encode('utf-8') in index_list:
             self.logger.info("Index %svector already exists, checking compatibility...", self.namespace)
             info = await self.async_redis_client.execute_command("FT.INFO", f"{self.namespace}vector")
-            info_dict = {info[i]: info[i + 1] for i in range(0, len(info), 2)}
-            stored_attributes = info_dict.get(b"attributes", [])
-            list_of_dict_attributes = [{attr[i]: attr[i + 1] for i in range(0, len(attr), 2)}
-                                       for attr in stored_attributes]
-            stored_fields_set = {(attr.get(b"identifier").decode().lower(), attr.get(b"type").decode().lower())
-                                 for attr in list_of_dict_attributes}
-            defined_schema = self.index_schema.to_dict() if hasattr(
-                self.index_schema, "to_dict") else self.index_schema
-            defined_fields = defined_schema.get("fields", [])
-            defined_fields_set = {(field.get("name"), field.get("type")) for field in defined_fields}
-            if stored_fields_set == defined_fields_set:
-                self.logger.info("Index %s.vector is compatible with defined schema", self.name)
-            else:
-                self.logger.warning(
-                    "data in the index is imcompatible with defined schema: index_store=%s, instead of %s", stored_fields_set, defined_fields_set)
-                await self.async_redis_client.execute_command("FT.DROPINDEX", f"{self.namespace}vector")
-                index_list = await self.async_redis_client.execute_command("FT._LIST")
-                self.logger.info("Index %svector dropped. Remaining indexes are:%s", self.namespace, index_list)
+            if info:
+                info_dict = {info[i]: info[i + 1] for i in range(0, len(info), 2)}
+                stored_attributes = info_dict.get(b"attributes", [])
+                list_of_dict_attributes = [{attr[i]: attr[i + 1] for i in range(0, len(attr), 2)}
+                                           for attr in stored_attributes]
+                stored_fields_set = {(attr.get(b"identifier") or attr.get(b"type") or b"").decode().lower()
+                                     for attr in list_of_dict_attributes}
+                if hasattr(self.index_schema, "to_dict"):
+                    defined_schema = self.index_schema.to_dict()
+                    defined_fields = defined_schema.get("fields", [])
+                    defined_fields_set = {(field.get("name"), field.get("type")) for field in defined_fields.values()}
+                else:
+                    defined_schema = self.index_schema
+                    defined_fields = defined_schema.fields
+                    defined_fields_set = {(field.name, field.type) for field in defined_fields.values()}
+                if stored_fields_set == defined_fields_set:
+                    self.logger.info("Index %s.vector is compatible with defined schema", self.name)
+                else:
+                    self.logger.warning(
+                        "data in the index is imcompatible with defined schema: index_store=%s, instead of %s", stored_fields_set, defined_fields_set)
+                    await self.async_redis_client.execute_command("FT.DROPINDEX", f"{self.namespace}vector")
+                    index_list = await self.async_redis_client.execute_command("FT._LIST")
+                    self.logger.info("Index %svector dropped. Remaining indexes are:%s", self.namespace, index_list)
 
         self.storage_context = await self.connect_to_redis_stores()
 
@@ -423,7 +433,7 @@ class IndexStore():
             retrievers=[summary_retriever, vector_retriever, keyword_retriever],
             similarity_top_k=5,
             num_queries=1,
-            mode="simple"
+            mode=FUSION_MODES.SIMPLE
         )
 
         # Create a query engine from the fusion retriever
@@ -446,14 +456,14 @@ class IndexStore():
             docs_removed = 0
             nodes_removed = 0
             need_to_remove_nodes_docs = []
-            #Try gracefully delete using index, in exception, fallback to per node removal
+            # Try gracefully delete using index, in exception, fallback to per node removal
             for doc_id in docs_to_remove:
                 try:
                     if hasattr(index, 'adelete_ref_doc'):
-                        await index.adelete_ref_doc(ref_doc_id=doc_id)
+                        await index.adelete_ref_doc(ref_doc_id=doc_id) # type: ignore
                         docs_removed += 1
                     elif hasattr(index, 'adelete'):
-                        await index.adelete(doc_id=doc_id)
+                        await index.adelete(doc_id=doc_id) # type: ignore
                         docs_removed += 1
                     else:
                         index.delete_ref_doc(ref_doc_id=doc_id)
@@ -472,8 +482,8 @@ class IndexStore():
                             need_to_remove_nodes_docs.append(doc_id)
 
             doc_nodes_to_remove = []
-            index_nodes = (index.index_struct.nodes if hasattr(index.index_struct, 'nodes')
-                           else index.index_struct.nodes_dict.keys() if hasattr(index.index_struct, 'nodes_dict')
+            index_nodes = (index.index_struct.nodes if hasattr(index.index_struct, 'nodes') # type: ignore
+                           else index.index_struct.nodes_dict.keys() if hasattr(index.index_struct, 'nodes_dict') # type: ignore
                            else index.docstore.docs)
             for node_id in index_nodes:
                 try:
@@ -489,7 +499,7 @@ class IndexStore():
                     if hasattr(index, dm):
                         func = getattr(index, dm)
                         break
-                await timed_async_execution(func, doc_nodes_to_remove)
+                await timed_async_execution(func, node_ids=doc_nodes_to_remove)
             except Exception as e:
                 self.logger.warning("Asyn deleting nodes methods are unavailable, try sync deletion")
                 delete_methods = ['delete_ref_doc', 'delete_notes', 'delete']
@@ -518,12 +528,12 @@ class IndexStore():
 
         if need_to_delete_by_nodes:
             for node_id, node in self.storage_context.docstore.docs.items():
-                #node_id = node.node_id
-                if (hasattr(node, "metadata") and node.metadata.get(f"{self.source.namespace}id") in docs_to_remove
+                # node_id = node.node_id
+                if (hasattr(node, "metadata") and node.metadata.get(f"{self.namespace}id") in docs_to_remove
                         or node.ref_doc_id in docs_to_remove):
                     node_remove_count += 1
                     self.logger.debug("Removing %s belonging to DocId %s...", node_id,
-                                      node.metadata.get(f"{self.source.namespace}id"))
+                                      node.metadata.get(f"{self.namespace}id"))
                     await self.storage_context.docstore.adelete_document(doc_id=node_id)
 
         self.logger.debug("Removed %s document and %s nodes from docstore",
@@ -533,15 +543,15 @@ class IndexStore():
     async def load_documents(self, document_list: list[Document] = [], force: bool = False):
         """Load documents into the index stores."""
 
-        async def extract_stored_document_metadata(nodes) -> dict[str: dict]:
+        async def extract_stored_document_metadata(nodes) -> dict[str, dict]:
             stored_metadata = {}
             for node in nodes:
-                if hasattr(node, "metadata") and f"{self.source.namespace}id" in node.metadata:
-                    _doc_id = node.doc_id if hasattr(node, 'doc_id') else node.metadata[f"{self.source.namespace}id"]
+                if hasattr(node, "metadata") and f"{self.namespace}id" in node.metadata:
+                    _doc_id = node.doc_id if hasattr(node, 'doc_id') else node.metadata[f"{self.namespace}id"]
                     node_id = node.node_id if hasattr(node, 'node_id') else _doc_id
                     n_metadata = {}
                     for k, v in node.metadata.items():
-                        if k.startswith(f"{self.source.namespace}"):
+                        if k.startswith(f"{self.namespace}"):
                             n_metadata[k] = v
                     stored_metadata[node_id] = n_metadata
             return stored_metadata
@@ -575,7 +585,7 @@ class IndexStore():
             else:
                 self.logger.debug("Source doc %s was not changed compare to docstore, skipping", _doc_id)
 
-        for stored__doc_id, metadata in [(v[f"{self.source.namespace}id"], v) for k, v in stored_metadata.items()]:
+        for stored__doc_id, metadata in [(v[f"{self.namespace}id"], v) for k, v in stored_metadata.items()]:
             if force:
                 self.logger.debug("force=True specified, removing File %s ...", stored__doc_id)
                 docs_to_remove.add(stored__doc_id)
@@ -666,7 +676,7 @@ class IndexStore():
         """Query the index about the content indexed"""
         response = await self.query_engine.aquery(question)
         self.logger.debug("answered query '%s' with '%s'", question, response)
-        return response
+        return response.response
 
     async def refresh(self):
         """Refresh the index with latest documents"""

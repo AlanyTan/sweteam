@@ -1,4 +1,4 @@
-from typing import Callable, Any, TypeVar, ParamSpec, ContextManager
+from typing import Callable, Any, TypeVar, ParamSpec, ContextManager, Coroutine
 from functools import wraps
 from contextlib import contextmanager
 import time
@@ -52,7 +52,7 @@ def timed_execution(f: Callable[P, T]) -> Callable[P, T]:
     return wrapper
 
 
-def timed_async_execution(f: Callable[P, T]) -> Callable[P, T]:
+def timed_async_execution(f: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, Coroutine[Any, Any, T]]:
     @wraps(f)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         method_name = _get_method_name(f)

@@ -1,3 +1,10 @@
+from .config import config
+from .utils.redis_pool import RedisConnectionPool
+from .utils.issue_management import IssueManager
+from .utils.log import get_default_logger
+from .utils.decorators import timed_async_execution, timing_context
+from sse_starlette.sse import EventSourceResponse
+import asyncio
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,14 +21,6 @@ import nest_asyncio  # Add this import
 
 # Apply nest_asyncio right after imports
 nest_asyncio.apply()
-import asyncio
-from sse_starlette.sse import EventSourceResponse
-
-from .utils import timed_async_execution
-from .utils.log import get_default_logger
-from .utils.issue_management import IssueManager
-from .utils.redis_pool import RedisConnectionPool
-from .config import config
 
 
 class ChatMessage(BaseModel):
@@ -41,7 +40,7 @@ class IssueManagementApp:
         self._setup_routes()
         self._setup_static_files()
         self._setup_templates()
-        self.issue_manager = None
+        self.issue_manager: IssueManager
         self.redis_client = self.redis_pool.get_client(host=config.REDIS_HOST,
                                                        port=config.REDIS_PORT,
                                                        password=config.REDIS_PASSWORD,
@@ -223,10 +222,11 @@ class IssueManagementApp:
 
             if "text" in found_issue_raw:
                 # if this is direct loaded from file by SimpleDirectoryReader .etc
-                found_issue = json.loads(found_issue_raw.get("text"))
+                issue_text = found_issue_raw.get("text", '{}')
+                found_issue = json.loads(issue_text)
             else:
                 # if this is created by Document(...)
-                found_issue = dict(found_issue_raw.get("text_resource"))
+                found_issue = dict(found_issue_raw.get("text_resource", '{}'))
 
             if found_issue:
                 issue = {}
@@ -257,7 +257,9 @@ class IssueManagementApp:
                 return issue
         except Exception as e:
             self.logger.warning("Error retrieving document %s from the source, due to %s", issue_id, e, exc_info=e)
-            return {"message": "Issue not found", "error": 404}
+            return {"message": "Error retrieving issue", "issue": issue_id, "error": e}
+
+        return {"message": "Issue not found", "issue": issue_id, "error": 404}
 
     def _parse_json_string(self, data: Any) -> Any:
         """Helper method to parse JSON strings"""
@@ -274,8 +276,10 @@ class IssueManagementApp:
             query = f"Regarding issue {message.issue_id}: {message.message}"
 
             try:
-                response = await timed_async_execution(self.issue_manager.query, query)
-                ai_response = str(response.response)
+                with timing_context("querying issue manager", is_async=True):
+                    response = await self.issue_manager.query(query)
+                    if getattr(response, "response", None):
+                        ai_response = str(response.response)
             except Exception as e:
                 ai_response = f"I run into error querying issue manager: {e}"
 
@@ -287,7 +291,7 @@ class IssueManagementApp:
 
     async def list_issues(self) -> list:
         """List all available issues."""
-        return await timed_async_execution(self.get_issue_list)
+        return await self.get_issue_list()
 
     def run(self):
         """Start the FastAPI application server"""
