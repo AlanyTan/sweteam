@@ -272,19 +272,19 @@ class IssueManagementApp:
 
     async def chat(self, message: ChatMessage) -> Dict[str, str]:
         """Process a chat message and return an AI response."""
-          query = f"Regarding issue {message.issue_id}: {message.message}"
+        query = f"Regarding issue {message.issue_id}: {message.message}"
 
-           try:
-                with timing_context("querying issue manager", is_async=True):
-                    response = await self.issue_manager.query(query)
-                    if getattr(response, "response", None):
-                        ai_response = str(response.response)
-                    else:
-                        ai_response = "No response from issue manager."
-            except Exception as e:
-                ai_response = f"I run into error querying issue manager: {e}"
-                self.logger.error("Error in chat endpoint: %s", e, exc_info=e)
-                return {"response": "I'm sorry, I encountered an error while processing your request."}
+        try:
+            with timing_context("querying issue manager", is_async=True):
+                response = await self.issue_manager.query(query)
+                if getattr(response, "response", None):
+                    ai_response = str(response.response)
+                else:
+                    ai_response = "No response from issue manager."
+        except Exception as e:
+            ai_response = f"I run into error querying issue manager: {e}"
+            self.logger.error("Error in chat endpoint: %s", e, exc_info=e)
+            return {"response": "I'm sorry, I encountered an error while processing your request."}
 
         return {"response": ai_response}
 
